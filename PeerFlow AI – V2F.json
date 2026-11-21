@@ -1,0 +1,1850 @@
+{
+  "name": "PeerFlow AI – V2F",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Hola! 👋\nSoy PeerFlowAI, asistente editorial. Para iniciar tu envío, escribe tu nombre, correo electrónico y anexa tu artículo en PDF (máximo 10 páginas)\n",
+        "options": {
+          "allowFileUploads": true,
+          "subtitle": "PeerFlow AI. Asistente editorial de revisión por pares",
+          "title": "PeerFlow AI 💡"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        -240,
+        -144
+      ],
+      "id": "6857c472-ed17-48ea-abea-936220effdb7",
+      "name": "Chat del autor",
+      "webhookId": "1de0c798-3c43-4b63-a61a-d80bee2c1cef"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ Object.keys($input.item.binary || {}).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0764a902-a9c7-478a-93fe-a3c9dc1b8f41",
+      "name": "¿Trae PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data0",
+        "options": {}
+      },
+      "id": "a1e5b7e8-f31a-4590-bff9-939c5a364b2d",
+      "name": "Leer PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        320,
+        -160
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reglas fijas: NO usan IA, son exactas\nconst pdf = $input.first().json;\nconst chat = $('Chat del autor').first().json;\n\nconst paginas = Number(pdf.numpages) || 0;\nconst texto = (pdf.text || '').replace(/\\s+/g, ' ').trim();\n\n// Título: metadatos del PDF solo si son reales; si no, las primeras líneas del texto\nconst basura = ['', 'untitled', '(anonymous)', 'anonymous', '(unspecified)'];\nconst tituloMeta = String((pdf.info && pdf.info.Title) || '').trim();\nlet titulo = basura.includes(tituloMeta.toLowerCase()) ? '' : tituloMeta;\nif (!titulo) {\n  const lineas = (pdf.text || '').split('\\n').map(l => l.trim()).filter(Boolean);\n  const partes = [];\n  for (const l of lineas) {\n    if (/^(autor|resumen|abstract|palabras clave)/i.test(l) || partes.length >= 3) break;\n    partes.push(l);\n  }\n  titulo = partes.join(' ').replace(/\\s+/g, ' ').trim() || 'Sin título';\n}\n\nreturn [{ json: {\n  sessionId: chat.sessionId,\n  mensajeAutor: chat.chatInput || '',\n  nombreArchivo: (chat.files && chat.files[0] && chat.files[0].fileName) || 'archivo.pdf',\n  titulo,\n  paginas,\n  cumplePaginas: paginas > 0 && paginas <= 10,\n  tieneTexto: texto.length > 500,\n  textoPDF: texto.slice(0, 15000)\n}}];"
+      },
+      "id": "49eb51dd-5b7b-496d-822f-87bc5c493ae2",
+      "name": "Validar reglas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.cumplePaginas }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.tieneTexto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2e315eba-c609-4832-a074-584fb372777a",
+      "name": "¿Cumple reglas técnicas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        816,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openalex.org/worksXXX",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search",
+              "value": "={{ $json.titulo }}"
+            },
+            {
+              "name": "per_page",
+              "value": "3"
+            },
+            {
+              "name": "select",
+              "value": "display_name,publication_year,doi"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cf3f7147-a181-4f17-bfc0-b3a128acda71",
+      "name": "Buscar en OpenAlex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1088,
+        -288
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "mxZDqntK10Myy0ML",
+          "name": "OpenAlex API key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n6-0",
+              "name": "sessionId",
+              "value": "={{ $('Validar reglas').item.json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "n6-1",
+              "name": "mensajeParaAgente",
+              "value": "=NUEVO ENVÍO RECIBIDO (pasó las reglas técnicas)\nMensaje del autor: {{ $('Validar reglas').item.json.mensajeAutor }}\nArchivo: {{ $('Validar reglas').item.json.nombreArchivo }}\nTítulo detectado: {{ $('Validar reglas').item.json.titulo }}\nPáginas: {{ $('Validar reglas').item.json.paginas }} (máximo 10)\n\nResultado de OpenAlex (trabajos ya publicados con título parecido):\n{{ $('Buscar en OpenAlex').first().json.error ? 'OpenAlex no respondió: ' + ($('Buscar en OpenAlex').first().json.error.message || 'error') : (($('Buscar en OpenAlex').first().json.results || []).map(r => '- ' + r.display_name + ' (' + r.publication_year + ') ' + (r.doi || '')).join('\\n') || 'Sin coincidencias') }}\n\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "720e2990-38e8-4d13-8e63-7ac2d9d5562e",
+      "name": "Preparar mensaje para el orquestador",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2288,
+        -176
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -144,
+        448
+      ],
+      "id": "2f50435b-d04b-4c7c-871e-9d35b5c84ee0",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -304,
+        432
+      ],
+      "id": "bdb4867b-c53a-49d6-a7cd-5553f51dd6fb",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.mensajeParaAgente || $json.chatInput }}",
+        "options": {
+          "systemMessage": "======================================================================\nA) AGENTE ORQUESTADOR · System Message\n=====================================================================\nEres PeerFlow AI, el agente orquestador del proceso editorial de revisión por pares. Atiendes a autores que envían manuscritos y coordinas la revisión editorial inicial (desk review) ANTES de la revisión por pares. Respondes siempre en español, con tono cordial, claro y profesional.\n\n## Tu equipo (herramientas)\n- \"Agente verificador de formato\": revisa secciones obligatorias y formato del manuscrito. Ya tiene acceso al texto; solo dile qué revisar.\n- \"Agente asignador de revisores\": elige 2 revisores de la hoja de revisores según el tema del manuscrito. Ya tiene acceso al texto.\nNo revises tú el texto: delega en tu equipo y decide con lo que te respondan.\n\n## Proceso\n1. Saludo / dudas: si el autor solo conversa, responde sus dudas sobre normas de envío. Pide nombre completo y correo electrónico si aún no los tienes.\n2. Cuando recibas \"NUEVO ENVÍO RECIBIDO\":\n   a. Si no conoces el correo del autor, NO evalúes: pide nombre y correo y que vuelva a adjuntar el PDF (accion = \"conversar\").\n   b. Llama al \"Agente verificador de formato\".\n   c. Si el verificador dice que NO cumple → accion = \"rechazar\" (no llames al asignador).\n   d. Si cumple → llama al \"Agente asignador de revisores\" → accion = \"enviar_a_revision\".\n   e. Si OpenAlex muestra un trabajo publicado con título casi idéntico → posible_duplicado = \"Sí\" (no acuses de plagio; el editor lo verifica).\n3. En \"respuesta_autor\" explica el dictamen preliminar y aclara que la decisión final la toma el editor humano, quien recibirá la propuesta por correo. Nunca reveles los nombres de los revisores al autor (revisión doble ciego).\n\n## Criterios de la revista\n- Máximo 10 páginas (ya verificado por el sistema).\n- Secciones obligatorias: Resumen, Palabras clave, Introducción, Metodología, Resultados, Discusión, Conclusiones, Referencias (se aceptan nombres equivalentes).\n- Resumen de máximo 250 palabras; 3 a 5 palabras clave; referencias en APA 7.\n\n## Límites (qué NO haces)\n- No evalúas la calidad científica: eso lo hacen los revisores pares.\n- No escribes, corriges ni reescribes el manuscrito.\n- No revelas datos de los revisores al autor.\n- No prometes fechas ni la aceptación del artículo.\n- No inventas datos que no te haya dado tu equipo o el sistema.\n\n## Fuera de alcance (accion = \"conversar\")\nResponde amablemente que no puedes ayudar con eso, di en una frase qué sí haces y redirige al envío. Ejemplos:\n- \"¿Me puedes escribir la introducción?\" → No redactas contenido; solo revisas el cumplimiento de normas.\n- \"¿Quiénes van a revisar mi artículo?\" → La revisión es doble ciego; no compartes datos de revisores.\n- Temas sin relación (recetas, tareas, clima) → Solo atiendes el envío de manuscritos.\n\n## Formato de salida (OBLIGATORIO)\nResponde SIEMPRE y ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después y sin bloques de código. Usa exactamente estas claves:\n{\n  \"accion\": \"conversar | rechazar | enviar_a_revision\",\n  \"respuesta_autor\": \"mensaje para el autor\",\n  \"nombre_autor\": \"\",\n  \"correo_autor\": \"\",\n  \"titulo\": \"\",\n  \"resumen_formato\": \"resumen breve del dictamen del verificador\",\n  \"motivo\": \"motivo de la propuesta en 1 a 3 frases\",\n  \"posible_duplicado\": \"Sí | No\",\n  \"revisor_1_nombre\": \"\", \"revisor_1_correo\": \"\", \"revisor_1_area\": \"\",\n  \"revisor_2_nombre\": \"\", \"revisor_2_correo\": \"\", \"revisor_2_area\": \"\"\n}\nSi un campo no aplica, déjalo como \"\". Los correos de los revisores deben copiarse exactamente como los dio el Agente asignador de revisores.\n\n\n=====================================================================\nB) AGENTE VERIFICADOR DE FORMATO (nodo AI Agent Tool)\n=====================================================================\n--- Description (campo \"Description\") ---\nRevisa si el manuscrito cargado tiene las secciones obligatorias y el formato de la revista. Devuelve un dictamen CUMPLE / NO CUMPLE con la lista de secciones.\n\n--- Prompt (User Message) (campo \"Prompt\" → cambiar a \"Define below\" y pegar) ---\n{{ $fromAI('instruccion', 'Qué debe revisar el verificador', 'string') }}\n\nTEXTO DEL MANUSCRITO:\n{{ $('Validar reglas').isExecuted ? $('Validar reglas').first().json.textoPDF : 'No hay manuscrito cargado en este mensaje.' }}\n\n--- System Message (Options → Add Option → System Message) ---\nEres el Agente verificador de formato de la Revista de Investigación de Posgrado. Tu única responsabilidad es revisar el cumplimiento de normas formales; no evalúas la calidad científica.\nRevisa:\n1. Secciones obligatorias: Resumen, Palabras clave, Introducción, Metodología, Resultados, Discusión, Conclusiones, Referencias. Acepta equivalentes y menciónalo (Materiales y métodos = Metodología; Hallazgos = Resultados; Bibliografía = Referencias; Consideraciones finales = Conclusiones).\n2. Resumen de máximo 250 palabras (estima).\n3. Entre 3 y 5 palabras clave.\n4. Referencias en formato APA 7 (revisión general).\nResponde en español con: lista de secciones (✅ presente / ⚠️ con otro nombre / ❌ falta), observaciones de formato y una última línea exacta: \"DICTAMEN: CUMPLE\" o \"DICTAMEN: NO CUMPLE – <motivo breve>\". Falta de cualquier sección obligatoria = NO CUMPLE. No inventes secciones que no aparezcan en el texto.\n\n\n=====================================================================\nC) AGENTE ASIGNADOR DE REVISORES (nodo AI Agent Tool)\n=====================================================================\n--- Description ---\nElige 2 revisores adecuados para el manuscrito cargado, usando la hoja de revisores. Devuelve nombre, correo, área y justificación de cada uno.\n\n--- Prompt (User Message) ---\n{{ $fromAI('instruccion', 'Indicaciones para el asignador', 'string') }}\n\nTÍTULO Y PRIMERA PARTE DEL MANUSCRITO:\n{{ $('Validar reglas').isExecuted ? $('Validar reglas').first().json.titulo + '\\n\\n' + $('Validar reglas').first().json.textoPDF.slice(0, 3000) : 'No hay manuscrito cargado en este mensaje.' }}\n\n--- System Message ---\nEres el Agente asignador de revisores de la Revista de Investigación de Posgrado. Tu única responsabilidad es elegir 2 revisores.\n1. Usa SIEMPRE la herramienta \"Leer revisores\" para obtener la lista; nunca inventes revisores ni correos.\n2. Solo elige revisores con disponible = \"Sí\".\n3. Prioriza la coincidencia entre el tema del manuscrito y el área / palabras clave del revisor. Si el tema es interdisciplinario, elige revisores de áreas complementarias.\n4. Ante empate, prefiere al revisor con menos revisiones_activas.\nResponde en español con, para cada revisor: nombre, correo (tal como aparece en la hoja), área y una frase de justificación.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -64,
+        224
+      ],
+      "id": "3587c055-f608-4f24-aba0-83d224e41644",
+      "name": "Agente orquestador",
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Convierte la respuesta del orquestador (texto JSON) en campos, con guardrails\nconst raw = $input.first().json.output;\nlet d = null;\nif (raw && typeof raw === 'object') d = raw;\nelse {\n  const m = String(raw || '').match(/\\{[\\s\\S]*\\}/);\n  if (m) { try { d = JSON.parse(m[0]); } catch (e) { d = null; } }\n}\n// Si la IA no respondió en JSON, se trata como conversación normal\nif (!d || !d.accion) d = { accion: 'conversar', respuesta_autor: String(raw || '') };\nif (!['conversar', 'rechazar', 'enviar_a_revision'].includes(d.accion)) d.accion = 'conversar';\nconst campos = ['respuesta_autor','nombre_autor','correo_autor','titulo','resumen_formato','motivo','posible_duplicado',\n  'revisor_1_nombre','revisor_1_correo','revisor_1_area','revisor_2_nombre','revisor_2_correo','revisor_2_area'];\nfor (const c of campos) d[c] = (d[c] === undefined || d[c] === null) ? '' : String(d[c]);\nd.respuesta_autor = d.respuesta_autor.replace(/\\\\n/g, '\\n');\n// Guardrail: sin correo válido no se envía nada al editor\nif (d.accion !== 'conversar' && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(d.correo_autor)) {\n  d.accion = 'conversar';\n  d.respuesta_autor += '\\n\\nPara continuar necesito tu correo electrónico. Escríbelo y vuelve a adjuntar el PDF.';\n}\n// Guardrail: para enviar a revisión se necesitan 2 revisores con correo\nif (d.accion === 'enviar_a_revision' && (!d.revisor_1_correo || !d.revisor_2_correo)) {\n  d.motivo = (d.motivo + ' (La IA no pudo asignar 2 revisores; requiere asignación manual.)').trim();\n}\nreturn [{ json: d }];"
+      },
+      "id": "8e426d22-a437-4226-a937-7bd29da221aa",
+      "name": "Leer decisión",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Lee la hoja de revisores de la revista: id, nombre, área, palabras clave, correo, revisiones activas y disponibilidad.",
+        "documentId": {
+          "__rl": true,
+          "value": "1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0",
+          "mode": "list",
+          "cachedResultName": "PeerFlow_AI_Datos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Revisores",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "0ae5d50a-0d80-4edf-8c0a-827261d51877",
+      "name": "Leer revisores",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        256,
+        848
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "f5Xn37wvDA2HV1R7",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s3c",
+              "leftValue": "={{ $('Leer decisión').first().json.accion !== 'conversar' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "899c2752-29b9-4ecb-912f-1243bb8d4c18",
+      "name": "¿Hay decisión?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        592,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s4-0",
+              "name": "output",
+              "value": "={{ $('Leer decisión').first().json.respuesta_autor }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7eb95b28-3e7f-44d9-817a-7a1616fa2a57",
+      "name": "Responder en chat",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        656,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "editor@ejemplo.com",
+        "subject": "={{ '[PeerFlow AI] Aprobación requerida: ' + $('Leer decisión').first().json.titulo }}",
+        "message": "=<p><b>PeerFlow AI solicita su aprobación como editor/a</b></p><p><b>Título:</b> {{ $('Leer decisión').first().json.titulo }}<br><b>Autor/a:</b> {{ $('Leer decisión').first().json.nombre_autor }}<br><b>Páginas:</b> {{ $('Validar reglas').isExecuted ? $('Validar reglas').first().json.paginas : '—' }}</p><p><b>Propuesta de la IA:</b> {{ $('Leer decisión').first().json.accion === 'rechazar' ? 'RECHAZO EDITORIAL' : 'ENVIAR A REVISIÓN POR PARES' }}<br><b>Motivo:</b> {{ $('Leer decisión').first().json.motivo }}</p><p><b>Dictamen de formato:</b> {{ $('Leer decisión').first().json.resumen_formato }}</p><p><b>Revisores propuestos:</b> {{ $('Leer decisión').first().json.revisor_1_nombre || '—' }} ({{ $('Leer decisión').first().json.revisor_1_area || '—' }}) y {{ $('Leer decisión').first().json.revisor_2_nombre || '—' }} ({{ $('Leer decisión').first().json.revisor_2_area || '—' }})<br><b>Posible duplicado según OpenAlex:</b> {{ $('Leer decisión').first().json.posible_duplicado }}</p><p>Si <b>aprueba</b>, se enviarán los correos al autor y, si aplica, a los revisores. Si <b>rechaza</b> la propuesta, el envío pasará a revisión manual y no se enviará nada a los revisores.</p>",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Aprobar propuesta",
+            "disapproveLabel": "Rechazar propuesta"
+          }
+        },
+        "options": {}
+      },
+      "id": "73ebb5fe-d301-4691-b94c-30a680e2f08c",
+      "name": "Solicitar aprobación del editor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        768,
+        400
+      ],
+      "webhookId": "87911f5c-beb0-4534-b1e3-b3e07a4a20b8",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ycDFQJ6xHkz4bju7",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s6-0",
+              "name": "fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-1",
+              "name": "id_envio",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-2",
+              "name": "titulo",
+              "value": "={{ $('Leer decisión').first().json.titulo || ($('Validar reglas').isExecuted ? $('Validar reglas').first().json.titulo : 'Sin título') }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-3",
+              "name": "nombre_autor",
+              "value": "={{ $('Leer decisión').first().json.nombre_autor }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-4",
+              "name": "correo_autor",
+              "value": "={{ $('Leer decisión').first().json.correo_autor }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-5",
+              "name": "paginas",
+              "value": "={{ $('Validar reglas').isExecuted ? $('Validar reglas').first().json.paginas : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-6",
+              "name": "decision_ia",
+              "value": "={{ $('Leer decisión').first().json.accion }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-7",
+              "name": "motivo",
+              "value": "={{ $('Leer decisión').first().json.motivo }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-8",
+              "name": "revisor_1",
+              "value": "={{ $('Leer decisión').first().json.revisor_1_nombre }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-9",
+              "name": "revisor_2",
+              "value": "={{ $('Leer decisión').first().json.revisor_2_nombre }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-10",
+              "name": "posible_duplicado",
+              "value": "={{ $('Leer decisión').first().json.posible_duplicado }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-11",
+              "name": "aprobado_editor",
+              "value": "={{ $json.data.approved ? 'Sí' : 'No' }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-12",
+              "name": "decision_final",
+              "value": "={{ !$json.data.approved ? 'Revisión manual del editor' : ($('Leer decisión').first().json.accion === 'rechazar' ? 'Rechazo editorial' : 'Enviado a revisión por pares') }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-13",
+              "name": "correo_revisor_1",
+              "value": "={{ $('Leer decisión').first().json.revisor_1_correo }}",
+              "type": "string"
+            },
+            {
+              "id": "s6-14",
+              "name": "correo_revisor_2",
+              "value": "={{ $('Leer decisión').first().json.revisor_2_correo }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd786ed5-ded0-4d1b-b8af-93a4539983b4",
+      "name": "Preparar registro",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        976,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0",
+          "mode": "list",
+          "cachedResultName": "PeerFlow_AI_Datos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Registro",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "fecha",
+              "displayName": "fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id_envio",
+              "displayName": "id_envio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "titulo",
+              "displayName": "titulo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nombre_autor",
+              "displayName": "nombre_autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "correo_autor",
+              "displayName": "correo_autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "paginas",
+              "displayName": "paginas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision_ia",
+              "displayName": "decision_ia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "motivo",
+              "displayName": "motivo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "revisor_1",
+              "displayName": "revisor_1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "revisor_2",
+              "displayName": "revisor_2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "posible_duplicado",
+              "displayName": "posible_duplicado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "aprobado_editor",
+              "displayName": "aprobado_editor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision_final",
+              "displayName": "decision_final",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "13e41832-e68b-4cb6-9f4d-44694ac86855",
+      "name": "Registrar en hoja",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1200,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "f5Xn37wvDA2HV1R7",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Preparar registro').first().json.correo_autor }}",
+        "subject": "={{ '[Revista de Investigación de Posgrado] ' + $('Preparar registro').first().json.decision_final + ': ' + $('Preparar registro').first().json.titulo }}",
+        "message": "=<p>Estimado/a {{ $('Preparar registro').first().json.nombre_autor }}:</p><p>Gracias por enviar su manuscrito <i>\"{{ $('Preparar registro').first().json.titulo }}\"</i> a la Revista de Investigación de Posgrado.</p><p>{{ $('Preparar registro').first().json.decision_final === 'Enviado a revisión por pares' ? 'Su manuscrito cumple con las normas editoriales y fue enviado a revisión por pares (doble ciego). Le informaremos el resultado.' : ($('Preparar registro').first().json.decision_final === 'Rechazo editorial' ? 'Lamentamos informarle que su manuscrito no cumple con las normas editoriales de la revista. Motivo: ' + $('Preparar registro').first().json.motivo + ' Puede corregirlo y enviarlo de nuevo.' : 'El equipo editorial revisará su envío manualmente y se pondrá en contacto con usted.') }}</p><p>Atentamente,<br>Equipo editorial · Revista de Investigación de Posgrado (revista ficticia)</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "6e679a75-2a5b-47b1-9ec8-10d1cc6f4a71",
+      "name": "Notificar al autor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1424,
+        400
+      ],
+      "webhookId": "e31f2fe7-cc6a-4c8e-a5f7-19e7fcd417d3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ycDFQJ6xHkz4bju7",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s9c",
+              "leftValue": "={{ $('Preparar registro').first().json.decision_final === 'Enviado a revisión por pares' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1ad467c-b253-4543-9cb8-bcf9643268b8",
+      "name": "¿Invitar revisores?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1648,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Preparar registro').first().json.correo_revisor_1 + ',' + $('Preparar registro').first().json.correo_revisor_2 }}",
+        "subject": "={{ 'Invitación a revisar: ' + $('Preparar registro').first().json.titulo }}",
+        "message": "=<p>Estimado/a revisor/a:</p><p>Le invitamos a revisar el manuscrito <i>\"{{ $('Preparar registro').first().json.titulo }}\"</i>, que coincide con su área de especialidad. La revisión es doble ciego: no se comparten datos del autor.</p><p>Por favor responda a este correo para aceptar o declinar la invitación.</p><p>Atentamente,<br>Equipo editorial · Revista de Investigación de Posgrado (revista ficticia)</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1b470d7c-d493-4a5d-aa60-9bd6013e3f4c",
+      "name": "Invitar a revisores",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1856,
+        304
+      ],
+      "webhookId": "b1e0e0ff-8935-4b60-ae15-eaea1f48873c",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "ycDFQJ6xHkz4bju7",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s11-0",
+              "name": "output",
+              "value": "={{ 'Listo. El editor revisó la propuesta y la decisión es: ' + $('Preparar registro').first().json.decision_final + '. Te enviamos el detalle por correo a ' + $('Preparar registro').first().json.correo_autor + '.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6bfe2454-22b6-4aa8-b7e6-5b91539356bb",
+      "name": "Respuesta final al autor",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2112,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Revisa si el manuscrito cargado tiene las secciones obligatorias y el formato de la revista. Devuelve un dictamen CUMPLE / NO CUMPLE con la lista de secciones.",
+        "text": "={{ $fromAI('instruccion', 'Qué debe revisar el verificador', 'string') }}\nTEXTO DEL MANUSCRITO:\n{{ $('Validar reglas').isExecuted ? $('Validar reglas').first().json.textoPDF : 'No hay manuscrito cargado en este mensaje.' }}",
+        "options": {
+          "systemMessage": "Eres el Agente verificador de formato de la Revista de Investigación de Posgrado. Tu única responsabilidad es revisar el cumplimiento de normas formales; no evalúas la calidad científica.\nRevisa:\n1. Secciones obligatorias: Resumen, Palabras clave, Introducción, Metodología, Resultados, Discusión, Conclusiones, Referencias. Acepta equivalentes y menciónalo (Materiales y métodos = Metodología; Hallazgos = Resultados; Bibliografía = Referencias; Consideraciones finales = Conclusiones).\n2. Resumen de máximo 250 palabras (estima).\n3. Entre 3 y 5 palabras clave.\n4. Referencias en formato APA 7 (revisión general).\nResponde en español con: lista de secciones (✅ presente / ⚠️ con otro nombre / ❌ falta), observaciones de formato y una última línea exacta: \"DICTAMEN: CUMPLE\" o \"DICTAMEN: NO CUMPLE – <motivo breve>\". Falta de cualquier sección obligatoria = NO CUMPLE. No inventes secciones que no aparezcan en el texto."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 3,
+      "position": [
+        48,
+        464
+      ],
+      "id": "12733e47-7fc7-4845-8061-947769a87c28",
+      "name": "Agente verificador de formato"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -112,
+        656
+      ],
+      "id": "75c222f8-0016-49a3-b2db-090a69791c7e",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Elige 2 revisores adecuados para el manuscrito cargado, usando la hoja de revisores. Devuelve nombre, correo, área y justificación de cada uno.",
+        "text": "={{ $fromAI('instruccion', 'Indicaciones para el asignador', 'string') }}\n\nTÍTULO Y PRIMERA PARTE DEL MANUSCRITO:\n{{ $('Validar reglas').isExecuted ? $('Validar reglas').first().json.titulo + '\\n\\n' + $('Validar reglas').first().json.textoPDF.slice(0, 3000) : 'No hay manuscrito cargado en este mensaje.' }}\n",
+        "options": {
+          "systemMessage": "Eres el Agente asignador de revisores de la Revista de Investigación de Posgrado. Tu única responsabilidad es elegir 2 revisores.\n1. Usa SIEMPRE la herramienta \"Leer revisores\" para obtener la lista; nunca inventes revisores ni correos.\n2. Solo elige revisores con disponible = \"Sí\".\n3. Prioriza la coincidencia entre el tema del manuscrito y el área / palabras clave del revisor. Si el tema es interdisciplinario, elige revisores de áreas complementarias.\n4. Ante empate, prefiere al revisor con menos revisiones_activas.\nResponde en español con, para cada revisor: nombre, correo (tal como aparece en la hoja), área y una frase de justificación.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agentTool",
+      "typeVersion": 3,
+      "position": [
+        80,
+        640
+      ],
+      "id": "f4ce942c-36a1-4fe1-93e5-85e6db575f62",
+      "name": "Agente asignador de revisores"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        80,
+        800
+      ],
+      "id": "2eba4bc6-261b-4368-a918-6287d32c2498",
+      "name": "OpenAI Chat Model2",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "t1-0",
+              "name": "fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "t1-1",
+              "name": "id_envio",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "t1-2",
+              "name": "titulo",
+              "value": "={{ $('Validar reglas').first().json.titulo }}",
+              "type": "string"
+            },
+            {
+              "id": "t1-3",
+              "name": "nombre_autor",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t1-4",
+              "name": "correo_autor",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t1-5",
+              "name": "paginas",
+              "value": "={{ $('Validar reglas').first().json.paginas }}",
+              "type": "string"
+            },
+            {
+              "id": "t1-6",
+              "name": "decision_ia",
+              "value": "No aplica (regla fija)",
+              "type": "string"
+            },
+            {
+              "id": "t1-7",
+              "name": "motivo",
+              "value": "={{ $('Validar reglas').first().json.cumplePaginas ? 'El PDF no tiene texto seleccionable (posible escaneo).' : 'El PDF tiene ' + $('Validar reglas').first().json.paginas + ' páginas; el máximo es 10.' }}",
+              "type": "string"
+            },
+            {
+              "id": "t1-8",
+              "name": "revisor_1",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t1-9",
+              "name": "revisor_2",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t1-10",
+              "name": "posible_duplicado",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t1-11",
+              "name": "aprobado_editor",
+              "value": "No aplica",
+              "type": "string"
+            },
+            {
+              "id": "t1-12",
+              "name": "decision_final",
+              "value": "={{ $('Validar reglas').first().json.cumplePaginas ? 'Rechazo técnico (sin texto)' : 'Rechazo técnico (páginas)' }}",
+              "type": "string"
+            },
+            {
+              "id": "t1-13",
+              "name": "respuesta",
+              "value": "={{ !$('Validar reglas').first().json.cumplePaginas ? 'Tu archivo \"' + $('Validar reglas').first().json.nombreArchivo + '\" tiene ' + $('Validar reglas').first().json.paginas + ' páginas y el límite de la revista es 10. Por favor reduce la extensión y vuelve a enviarlo.' : 'No pude leer texto en \"' + $('Validar reglas').first().json.nombreArchivo + '\". Puede ser un PDF escaneado como imagen. Envía un PDF con texto seleccionable.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ec2eadba-3c78-4440-9e03-9953e15d126d",
+      "name": "Preparar registro: excede o sin texto",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1168,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "t2-0",
+              "name": "fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "t2-1",
+              "name": "id_envio",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "t2-2",
+              "name": "titulo",
+              "value": "={{ ($('Chat del autor').first().json.files || [{}])[0].fileName || 'archivo sin nombre' }}",
+              "type": "string"
+            },
+            {
+              "id": "t2-3",
+              "name": "nombre_autor",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t2-4",
+              "name": "correo_autor",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t2-5",
+              "name": "paginas",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t2-6",
+              "name": "decision_ia",
+              "value": "No aplica (regla fija)",
+              "type": "string"
+            },
+            {
+              "id": "t2-7",
+              "name": "motivo",
+              "value": "El archivo no se pudo abrir (PDF dañado o inválido).",
+              "type": "string"
+            },
+            {
+              "id": "t2-8",
+              "name": "revisor_1",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t2-9",
+              "name": "revisor_2",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t2-10",
+              "name": "posible_duplicado",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "t2-11",
+              "name": "aprobado_editor",
+              "value": "No aplica",
+              "type": "string"
+            },
+            {
+              "id": "t2-12",
+              "name": "decision_final",
+              "value": "Rechazo técnico (PDF dañado)",
+              "type": "string"
+            },
+            {
+              "id": "t2-13",
+              "name": "respuesta",
+              "value": "No pude abrir tu archivo: parece estar dañado o no es un PDF válido. Por favor genera el PDF de nuevo (Archivo → Exportar como PDF) y vuelve a enviarlo.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "20903b44-6dc7-4bdc-9cfd-74c0561392bf",
+      "name": "Preparar registro: PDF dañado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0",
+          "mode": "list",
+          "cachedResultName": "PeerFlow_AI_Datos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Registro",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "fecha",
+              "displayName": "fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id_envio",
+              "displayName": "id_envio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "titulo",
+              "displayName": "titulo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nombre_autor",
+              "displayName": "nombre_autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "correo_autor",
+              "displayName": "correo_autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "paginas",
+              "displayName": "paginas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision_ia",
+              "displayName": "decision_ia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "motivo",
+              "displayName": "motivo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "revisor_1",
+              "displayName": "revisor_1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "revisor_2",
+              "displayName": "revisor_2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "posible_duplicado",
+              "displayName": "posible_duplicado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "aprobado_editor",
+              "displayName": "aprobado_editor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "decision_final",
+              "displayName": "decision_final",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "correo_revisor_1",
+              "displayName": "correo_revisor_1",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "correo_revisor_2",
+              "displayName": "correo_revisor_2",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "cefeef9f-bbb7-43fa-9681-421ceeb80c60",
+      "name": "Registrar rechazo técnico",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1712,
+        96
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "f5Xn37wvDA2HV1R7",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "t4-0",
+              "name": "output",
+              "value": "={{ $('Preparar registro: PDF dañado').isExecuted ? $('Preparar registro: PDF dañado').first().json.respuesta : $('Preparar registro: excede o sin texto').first().json.respuesta }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2e5ef947-9738-490c-ae4c-b14d690063eb",
+      "name": "Responder rechazo técnico",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2032,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "t5c",
+              "leftValue": "={{ !!$json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6ce017fa-be8e-4c62-aed4-f4ca412551c9",
+      "name": "¿Falló OpenAlex?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1392,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "t6-0",
+              "name": "fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "t6-1",
+              "name": "flujo",
+              "value": "={{ $workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "t6-2",
+              "name": "nodo",
+              "value": "Buscar en OpenAlex",
+              "type": "string"
+            },
+            {
+              "id": "t6-3",
+              "name": "mensaje_error",
+              "value": "={{ $json.error.message || JSON.stringify($json.error) }}",
+              "type": "string"
+            },
+            {
+              "id": "t6-4",
+              "name": "id_ejecucion",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "t6-5",
+              "name": "accion_tomada",
+              "value": "3 reintentos fallidos; el flujo continuó sin verificar duplicados. El editor debe verificarlo manualmente.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2bd9a3e-8131-41ad-82df-b1ed7033e13f",
+      "name": "Preparar registro de error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1696,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0",
+          "mode": "list",
+          "cachedResultName": "PeerFlow_AI_Datos",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1yCVkELmtmtShD4v5IBs94aNAnzx4u9bv7UUG4aR42l0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Errores",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "fecha",
+              "displayName": "fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "flujo",
+              "displayName": "flujo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "nodo",
+              "displayName": "nodo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "mensaje_error",
+              "displayName": "mensaje_error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "id_ejecucion",
+              "displayName": "id_ejecucion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "accion_tomada",
+              "displayName": "accion_tomada",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "e9b117ab-80f0-45ce-9a93-0e52c70c81b1",
+      "name": "Registrar error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1952,
+        -464
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "f5Xn37wvDA2HV1R7",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat del autor": {
+      "main": [
+        [
+          {
+            "node": "¿Trae PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Trae PDF?": {
+      "main": [
+        [
+          {
+            "node": "Leer PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer PDF": {
+      "main": [
+        [
+          {
+            "node": "Validar reglas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar registro: PDF dañado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar reglas": {
+      "main": [
+        [
+          {
+            "node": "¿Cumple reglas técnicas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Cumple reglas técnicas?": {
+      "main": [
+        [
+          {
+            "node": "Buscar en OpenAlex",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar registro: excede o sin texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar en OpenAlex": {
+      "main": [
+        [
+          {
+            "node": "¿Falló OpenAlex?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar mensaje para el orquestador": {
+      "main": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente orquestador": {
+      "main": [
+        [
+          {
+            "node": "Leer decisión",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer decisión": {
+      "main": [
+        [
+          {
+            "node": "¿Hay decisión?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay decisión?": {
+      "main": [
+        [
+          {
+            "node": "Solicitar aprobación del editor",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder en chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Solicitar aprobación del editor": {
+      "main": [
+        [
+          {
+            "node": "Preparar registro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar registro": {
+      "main": [
+        [
+          {
+            "node": "Registrar en hoja",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar en hoja": {
+      "main": [
+        [
+          {
+            "node": "Notificar al autor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notificar al autor": {
+      "main": [
+        [
+          {
+            "node": "¿Invitar revisores?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Invitar revisores?": {
+      "main": [
+        [
+          {
+            "node": "Invitar a revisores",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta final al autor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invitar a revisores": {
+      "main": [
+        [
+          {
+            "node": "Respuesta final al autor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente verificador de formato": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente verificador de formato",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente asignador de revisores": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente asignador de revisores",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer revisores": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente asignador de revisores",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar registro: excede o sin texto": {
+      "main": [
+        [
+          {
+            "node": "Registrar rechazo técnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar registro: PDF dañado": {
+      "main": [
+        [
+          {
+            "node": "Registrar rechazo técnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar rechazo técnico": {
+      "main": [
+        [
+          {
+            "node": "Responder rechazo técnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Falló OpenAlex?": {
+      "main": [
+        [
+          {
+            "node": "Preparar registro de error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar mensaje para el orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar registro de error": {
+      "main": [
+        [
+          {
+            "node": "Registrar error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar error": {
+      "main": [
+        [
+          {
+            "node": "Preparar mensaje para el orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "PDYGxzhoa22qAN2E",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "e8fae3a5-8807-4e50-aa4c-c65842ccf75e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b8ee2ec9968fd211ce309ff994250866f5441ce9357a551777044f2506754e1c"
+  },
+  "nodeGroups": [],
+  "id": "K0J93SURNjYy9rGU",
+  "tags": []
+}

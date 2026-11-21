@@ -1,0 +1,437 @@
+{
+  "name": "PeerFlow AI -v1",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {
+          "allowFileUploads": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        -240,
+        -144
+      ],
+      "id": "6857c472-ed17-48ea-abea-936220effdb7",
+      "name": "Chat del autor",
+      "webhookId": "1de0c798-3c43-4b63-a61a-d80bee2c1cef"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ Object.keys($input.item.binary || {}).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0764a902-a9c7-478a-93fe-a3c9dc1b8f41",
+      "name": "¿Trae PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data0",
+        "options": {}
+      },
+      "id": "a1e5b7e8-f31a-4590-bff9-939c5a364b2d",
+      "name": "Leer PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        320,
+        -160
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reglas fijas: NO usan IA, son exactas\nconst pdf = $input.first().json;\nconst chat = $('Chat del autor').first().json;\n\nconst paginas = Number(pdf.numpages) || 0;\nconst texto = (pdf.text || '').replace(/\\s+/g, ' ').trim();\nconst lineas = (pdf.text || '').split('\\n').map(l => l.trim()).filter(l => l.length > 15);\nconst tituloMeta = pdf.info && pdf.info.Title && pdf.info.Title.toLowerCase() !== 'untitled' ? pdf.info.Title : '';\nconst titulo = tituloMeta || lineas[0] || 'Sin título';\n\nreturn [{ json: {\n  sessionId: chat.sessionId,\n  mensajeAutor: chat.chatInput || '',\n  nombreArchivo: (chat.files && chat.files[0] && chat.files[0].fileName) || 'archivo.pdf',\n  titulo,\n  paginas,\n  cumplePaginas: paginas > 0 && paginas <= 10,\n  tieneTexto: texto.length > 500,\n  textoPDF: texto.slice(0, 15000)\n}}];"
+      },
+      "id": "49eb51dd-5b7b-496d-822f-87bc5c493ae2",
+      "name": "Validar reglas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c2",
+              "leftValue": "={{ $json.cumplePaginas }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c3",
+              "leftValue": "={{ $json.tieneTexto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2e315eba-c609-4832-a074-584fb372777a",
+      "name": "¿Cumple reglas técnicas?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        816,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openalex.org/works",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search",
+              "value": "={{ $json.titulo }}"
+            },
+            {
+              "name": "per_page",
+              "value": "3"
+            },
+            {
+              "name": "select",
+              "value": "display_name,publication_year,doi"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cf3f7147-a181-4f17-bfc0-b3a128acda71",
+      "name": "Buscar en OpenAlex",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        -160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "mxZDqntK10Myy0ML",
+          "name": "OpenAlex API key"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n6-0",
+              "name": "sessionId",
+              "value": "={{ $('Validar reglas').item.json.sessionId }}",
+              "type": "string"
+            },
+            {
+              "id": "n6-1",
+              "name": "mensajeParaAgente",
+              "value": "=NUEVO ENVÍO RECIBIDO (pasó las reglas técnicas)\nMensaje del autor: {{ $('Validar reglas').item.json.mensajeAutor }}\nArchivo: {{ $('Validar reglas').item.json.nombreArchivo }}\nTítulo detectado: {{ $('Validar reglas').item.json.titulo }}\nPáginas: {{ $('Validar reglas').item.json.paginas }} (máximo 10)\n\nResultado de OpenAlex (trabajos ya publicados con título parecido):\n{{ $json.error ? 'OpenAlex no respondió: ' + ($json.error.message || 'error') : (($json.results || []).map(r => '- ' + r.display_name + ' (' + r.publication_year + ') ' + (r.doi || '')).join('\\n') || 'Sin coincidencias') }}\n\nTEXTO DEL MANUSCRITO:\n{{ $('Validar reglas').item.json.textoPDF }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "720e2990-38e8-4d13-8e63-7ac2d9d5562e",
+      "name": "Preparar mensaje para el orquestador",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1280,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n7-0",
+              "name": "output",
+              "value": "={{ !$json.cumplePaginas ? 'Tu archivo \"' + $json.nombreArchivo + '\" tiene ' + $json.paginas + ' páginas y el límite de la revista es 10. Por favor reduce la extensión y vuelve a enviarlo.' : 'No pude leer texto en \"' + $json.nombreArchivo + '\". Puede ser un PDF escaneado como imagen. Envía un PDF con texto seleccionable.' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "32e56b57-c749-48f8-8b00-25c9076f7754",
+      "name": "Respuesta: rechazo técnico",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n8-0",
+              "name": "output",
+              "value": "=No pude abrir tu archivo: parece estar dañado o no es un PDF válido. Por favor genera el PDF de nuevo (Archivo → Exportar como PDF) y vuelve a enviarlo.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6fa32895-afeb-4364-bc72-850e1b619933",
+      "name": "Respuesta: PDF dañado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        96
+      ]
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        32,
+        464
+      ],
+      "id": "2f50435b-d04b-4c7c-871e-9d35b5c84ee0",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -128,
+        448
+      ],
+      "id": "bdb4867b-c53a-49d6-a7cd-5553f51dd6fb",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.mensajeParaAgente || $json.chatInput }}",
+        "options": {
+          "systemMessage": "Eres PeerFlow AI, el asistente editorial de la \"Revista de Investigación de Posgrado\" (revista ficticia). Atiendes a autores que envían manuscritos y haces la revisión editorial inicial (desk review) ANTES de que el manuscrito llegue a revisores pares. Respondes siempre en español, con tono cordial, claro y profesional.\n\n## Tu propósito\n1. Recibir a los autores: saluda, explica brevemente el proceso y pide su nombre completo y correo electrónico antes de que envíen el PDF.\n2. Cuando recibas un \"NUEVO ENVÍO RECIBIDO\", evalúa el manuscrito contra los criterios de la revista y explica el resultado al autor.\n3. Responder dudas sobre las normas de envío de la revista.\n\n## Criterios de la revista\n- Extensión máxima: 10 páginas (esto ya lo verificó el sistema antes de llegar a ti).\n- Secciones obligatorias: Resumen, Palabras clave, Introducción, Metodología, Resultados, Discusión, Conclusiones, Referencias.\n  - Acepta nombres equivalentes y dilo explícitamente (por ejemplo: \"Materiales y métodos\" = Metodología; \"Hallazgos\" = Resultados; \"Bibliografía\" = Referencias; \"Consideraciones finales\" = Conclusiones).\n- Resumen de máximo 250 palabras.\n- Entre 3 y 5 palabras clave.\n- Referencias en formato APA 7.\n- Si OpenAlex muestra un trabajo publicado con un título casi idéntico, márcalo como \"posible duplicado\" para que el editor lo verifique. No acuses al autor de plagio.\n\n## Cómo responder a un envío\nDa un dictamen preliminar con este formato:\n- Título del manuscrito\n- Secciones: lista de cada sección obligatoria con ✅ (presente), ⚠️ (presente con otro nombre) o ❌ (falta)\n- Formato: resumen, palabras clave y referencias\n- Posible duplicado: sí / no\n- Dictamen preliminar: \"PASA A REVISIÓN\" o \"RECHAZO EDITORIAL\", con el motivo en 1 a 3 frases\nAclara siempre que el dictamen es preliminar y que la decisión final la toma el editor humano.\n\n## Límites (qué NO haces)\n- No evalúas la calidad científica ni opinas si el estudio es \"bueno\" o \"malo\": eso lo hacen los revisores pares.\n- No escribes, corriges ni reescribes el manuscrito del autor.\n- No revelas los nombres ni datos de los revisores al autor.\n- No prometes fechas de publicación ni la aceptación del artículo.\n- No inventas secciones ni datos que no estén en el texto del manuscrito.\n\n## Solicitudes fuera de alcance\nSi te piden algo fuera de tu función, responde amablemente que no puedes ayudar con eso, explica en una frase qué sí haces y redirige al proceso de envío. Ejemplos:\n- \"¿Me puedes escribir la introducción de mi artículo?\" → No redactas contenido; solo revisas el cumplimiento de las normas de la revista.\n- \"¿Quiénes van a revisar mi artículo?\" → La revisión es anónima (doble ciego); no compartes datos de revisores.\n- Preguntas sin relación (recetas, tareas, clima, etc.) → Solo atiendes temas del envío de manuscritos a la revista.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -64,
+        224
+      ],
+      "id": "3587c055-f608-4f24-aba0-83d224e41644",
+      "name": "Agente orquestador"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat del autor": {
+      "main": [
+        [
+          {
+            "node": "¿Trae PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Trae PDF?": {
+      "main": [
+        [
+          {
+            "node": "Leer PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer PDF": {
+      "main": [
+        [
+          {
+            "node": "Validar reglas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta: PDF dañado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar reglas": {
+      "main": [
+        [
+          {
+            "node": "¿Cumple reglas técnicas?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Cumple reglas técnicas?": {
+      "main": [
+        [
+          {
+            "node": "Buscar en OpenAlex",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta: rechazo técnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar en OpenAlex": {
+      "main": [
+        [
+          {
+            "node": "Preparar mensaje para el orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar mensaje para el orquestador": {
+      "main": [
+        [
+          {
+            "node": "Agente orquestador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "6cb86749-bf0d-48de-ac68-a44b1c5d5582",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b8ee2ec9968fd211ce309ff994250866f5441ce9357a551777044f2506754e1c"
+  },
+  "nodeGroups": [],
+  "id": "K0J93SURNjYy9rGU",
+  "tags": []
+}

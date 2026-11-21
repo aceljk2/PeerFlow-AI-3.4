@@ -1,0 +1,159 @@
+{
+  "name": "PeerFlow AI – Registro de errores",
+  "nodes": [
+    {
+      "id": "e1",
+      "name": "Error en PeerFlow AI",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "e2",
+      "name": "Preparar registro de error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e2-0",
+              "name": "fecha",
+              "value": "={{ $now.toFormat('yyyy-MM-dd HH:mm') }}",
+              "type": "string"
+            },
+            {
+              "id": "e2-1",
+              "name": "flujo",
+              "value": "={{ $json.workflow.name }}",
+              "type": "string"
+            },
+            {
+              "id": "e2-2",
+              "name": "nodo",
+              "value": "={{ $json.execution.lastNodeExecuted || ($json.execution.error && $json.execution.error.node && $json.execution.error.node.name) || 'desconocido' }}",
+              "type": "string"
+            },
+            {
+              "id": "e2-3",
+              "name": "mensaje_error",
+              "value": "={{ ($json.execution.error && $json.execution.error.message) || 'Sin mensaje' }}",
+              "type": "string"
+            },
+            {
+              "id": "e2-4",
+              "name": "id_ejecucion",
+              "value": "={{ $json.execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "e2-5",
+              "name": "accion_tomada",
+              "value": "Registrado y notificado al editor para intervención manual.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "e3",
+      "name": "Registrar error",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Errores"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "handlingExtraData": "ignoreIt"
+        }
+      }
+    },
+    {
+      "id": "e4",
+      "name": "Avisar al editor",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        660,
+        0
+      ],
+      "webhookId": "187cfae1-035b-4451-b22c-b19906769558",
+      "parameters": {
+        "sendTo": "TUCORREO+editor@gmail.com",
+        "subject": "={{ '[PeerFlow AI] Error en el flujo: ' + $('Preparar registro de error').first().json.nodo }}",
+        "emailType": "html",
+        "message": "=<p>Falló una ejecución de PeerFlow AI y requiere revisión manual.</p><p><b>Nodo:</b> {{ $('Preparar registro de error').first().json.nodo }}<br><b>Error:</b> {{ $('Preparar registro de error').first().json.mensaje_error }}<br><b>Ejecución:</b> {{ $('Preparar registro de error').first().json.id_ejecucion }}</p><p>El error quedó registrado en la pestaña Errores.</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Error en PeerFlow AI": {
+      "main": [
+        [
+          {
+            "node": "Preparar registro de error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar registro de error": {
+      "main": [
+        [
+          {
+            "node": "Registrar error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar error": {
+      "main": [
+        [
+          {
+            "node": "Avisar al editor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
